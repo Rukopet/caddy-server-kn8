@@ -1,13 +1,102 @@
-# Static Website Deployment with Caddy Server
+# Caddy Gateway для KN8
 
-This template deploys a static website using the [Caddy](https://caddyserver.com) server and works seamlessly with both [Railway](https://railway.app/?referralCode=alphasec) and [DigitalOcean](https://m.do.co/c/5552e11c260f). By default, the `site/` directory gets deployed as a static site. This can be modified by changing the Dockerfile.
+API Gateway на Caddy для проксирования запросов в kn8-core.
 
-### 🚀 Deploy on Railway
+## Архитектура
 
-For a step-by-step guide, see [this tutorial](https://alphasec.io/how-to-deploy-a-static-website-with-caddy-on-railway/), or click the button below to deploy instantly on [Railway](https://railway.app/?referralCode=alphasec).
+```
+Client → Caddy (:8080) → kn8-core (:4000)
+         Gateway          Bounded Contexts
+```
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template/TETV8z?referralCode=alphasec)
+## Что делает
 
-### ☁️ Deploy on DigitalOcean
+- 🌐 Статический веб-сервер (SPA support)
+- 🔄 Reverse proxy `/api/*` → kn8-core
+- 📊 JSON логирование
+- ✅ Health check проксирование
 
-Although this repo is optimized for Railway, the same setup can be deployed to [DigitalOcean](https://m.do.co/c/5552e11c260f) using App Platform or a custom droplet. Follow [this guide](https://alphasec.io/how-to-deploy-a-static-website-with-caddy-on-digitalocean/) for detailed instructions.
+## Быстрый старт
+
+### Docker
+
+```bash
+docker build -t caddy-gateway .
+
+docker run -d \
+  -p 8080:8080 \
+  -e KN8_CORE_URL=http://kn8-core:4000 \
+  caddy-gateway
+```
+
+### Docker Compose (с kn8-core)
+
+Добавьте kn8-core в `docker-compose.yml`:
+
+```yaml
+services:
+  caddy:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - KN8_CORE_URL=http://kn8-core:4000
+    depends_on:
+      - kn8-core
+
+  kn8-core:
+    image: your-registry/kn8-core:latest
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+```
+
+Запуск:
+```bash
+docker-compose up -d
+```
+
+## Environment Variables
+
+| Переменная | Описание | Default |
+|------------|----------|---------|
+| `PORT` | Порт Caddy | `8080` |
+| `KN8_CORE_URL` | URL kn8-core сервиса | `http://localhost:4000` |
+
+## Роутинг
+
+| Path | Назначение | Проксирование |
+|------|-----------|---------------|
+| `/api/*` | API запросы | → kn8-core |
+| `/health` | Health check | → kn8-core |
+| `/*` | Статика (SPA) | Локально из `/srv` |
+
+## Production (HTTPS)
+
+Для автоматического HTTPS обновите Caddyfile:
+
+```caddyfile
+your-domain.com {
+    log {
+        output stdout
+        format json
+    }
+    
+    handle /api/* {
+        reverse_proxy kn8-core:4000
+    }
+    
+    handle /health {
+        reverse_proxy kn8-core:4000
+    }
+    
+    handle {
+        root * /srv
+        file_server
+        try_files {path} /index.html
+    }
+}
+```
+
+Caddy автоматически получит SSL от Let's Encrypt.

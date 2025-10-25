@@ -1,0 +1,8 @@
+bin/
+*.log
+.env
+coverage.out
+coverage.html
+go.sum
+caddy_data/
+caddy_config/
