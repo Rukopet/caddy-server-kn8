@@ -27,7 +27,7 @@ handle /debug {
 }
 
 handle {
-	reverse_proxy {$KN8_FE_URL:http://kn8-fe.railway.internal:3000}
+	reverse_proxy {$KN8_FE_URL:http://kn8-fe.railway.internal:8080}
 }
 
 handle_errors {
