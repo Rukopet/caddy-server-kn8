@@ -12,6 +12,7 @@ Client → Caddy (:8080) → kn8-core (:4000)
 ## Что делает
 
 - 🌐 Статический веб-сервер (SPA support)
+- 🔐 JWT аутентификация через forward_auth (делегирование в kn8-core)
 - 🔄 Reverse proxy `/api/*` → kn8-core
 - 📊 JSON логирование
 - ✅ Health check проксирование
@@ -66,11 +67,55 @@ docker-compose up -d
 
 ## Роутинг
 
-| Path | Назначение | Проксирование |
-|------|-----------|---------------|
-| `/api/*` | API запросы | → kn8-core |
-| `/health` | Health check | → kn8-core |
-| `/*` | Статика (SPA) | Локально из `/srv` |
+| Path | Назначение | Аутентификация | Проксирование |
+|------|-----------|----------------|---------------|
+| `/auth/*` | Логин, регистрация | ❌ Нет | → kn8-core |
+| `/api/*` | Защищенные API | ✅ forward_auth | → kn8-core |
+| `/health` | Health check | ❌ Нет | → kn8-core |
+| `/*` | Статика (SPA) | ❌ Нет | Локально `/srv` |
+
+## Как работает аутентификация
+
+```
+1. Client → GET /api/orders
+   Authorization: Bearer <jwt>
+
+2. Caddy → forward_auth → kn8-core:4000/auth/verify
+   
+3. kn8-core /auth/verify:
+   ✓ Проверяет JWT (подпись, expiry, issuer)
+   ✓ Возвращает headers:
+     X-User-ID: "user-uuid"
+     X-Tenant-ID: "tenant-uuid"
+     X-User-Roles: "user,admin"
+   
+4. Caddy → копирует headers → kn8-core:4000/api/orders
+   
+5. kn8-core → читает headers → делает авторизацию
+```
+
+### Что нужно в kn8-core
+
+Создайте endpoint `/auth/verify`:
+
+```go
+func VerifyToken(w http.ResponseWriter, r *http.Request) {
+    token := r.Header.Get("Authorization")
+    
+    // Проверка JWT
+    claims, err := validateJWT(token)
+    if err != nil {
+        w.WriteHeader(http.StatusUnauthorized)
+        return
+    }
+    
+    // Обогащение headers
+    w.Header().Set("X-User-ID", claims.UserID)
+    w.Header().Set("X-Tenant-ID", claims.TenantID)
+    w.Header().Set("X-User-Roles", strings.Join(claims.Roles, ","))
+    w.WriteHeader(http.StatusOK)
+}
+```
 
 ## Production (HTTPS)
 
