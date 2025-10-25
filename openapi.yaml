@@ -1,0 +1,457 @@
+openapi: 3.0.3
+info:
+  title: Authentication API
+  description: API for authentication with JWT and Google OAuth support
+  version: 1.0.0
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: Authentication and authorization operations
+  - name: User
+    description: User operations
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new account with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User successfully registered
+          headers:
+            Set-Cookie:
+              description: Refresh token in httpOnly cookie
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      description: Authenticate user with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Successfully authenticated
+          headers:
+            Set-Cookie:
+              description: Refresh token in httpOnly cookie
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh token
+      description: Get new access token using refresh token from httpOnly cookie
+      parameters:
+        - in: cookie
+          name: refresh_token
+          required: true
+          schema:
+            type: string
+          description: Refresh token from httpOnly cookie
+      responses:
+        "200":
+          description: Token successfully refreshed
+          headers:
+            Set-Cookie:
+              description: New refresh token in httpOnly cookie (token rotation)
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/google:
+    get:
+      tags:
+        - Authentication
+      summary: Initialize Google OAuth
+      description: Redirects user to Google authorization page
+      parameters:
+        - name: redirect_uri
+          in: query
+          required: false
+          schema:
+            type: string
+          description: URL for redirect after authorization
+      responses:
+        "302":
+          description: Redirect to Google OAuth with state parameter
+          headers:
+            Set-Cookie:
+              description: OAuth state in httpOnly cookie for CSRF protection
+              schema:
+                type: string
+                example: oauth_state=random_state_value; HttpOnly; Secure; SameSite=Lax; Max-Age=600
+
+  /auth/google/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Google OAuth callback
+      description: Handle response from Google after authorization
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from Google
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: State parameter for CSRF protection (REQUIRED)
+        - in: cookie
+          name: oauth_state
+          required: true
+          schema:
+            type: string
+          description: OAuth state from cookie for validation
+      responses:
+        "200":
+          description: Successfully authenticated via Google
+          headers:
+            Set-Cookie:
+              description: Refresh token in httpOnly cookie
+              schema:
+                type: string
+                example: refresh_token=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/api/auth/refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Authorization error or state mismatch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Invalidate current token and clear refresh token cookie
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Successfully logged out
+          headers:
+            Set-Cookie:
+              description: Clear refresh token cookie
+              schema:
+                type: string
+                example: refresh_token=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/api/auth/refresh
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Successfully logged out
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/verify:
+    get:
+      tags:
+        - Authentication
+      summary: Verify JWT token (internal)
+      description: |
+        Internal endpoint for Caddy forward_auth.
+        Validates JWT and returns user claims as headers.
+        NOT intended for direct client use.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token is valid
+          headers:
+            X-User-ID:
+              description: User UUID
+              schema:
+                type: string
+                format: uuid
+                example: 123e4567-e89b-12d3-a456-426614174000
+            X-User-Email:
+              description: User email
+              schema:
+                type: string
+                format: email
+                example: user@example.com
+            X-Tenant-ID:
+              description: Tenant UUID
+              schema:
+                type: string
+                format: uuid
+                example: tenant-123e4567-e89b-12d3-a456-426614174000
+            X-User-Roles:
+              description: Comma-separated user roles
+              schema:
+                type: string
+                example: admin,user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "401":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /user/me:
+    get:
+      tags:
+        - User
+      summary: Get current user info
+      description: Returns authenticated user data
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags:
+        - User
+      summary: Update user profile
+      description: Update current user data
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Profile successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token in format "Bearer {token}"
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SecurePassword123!
+        name:
+          type: string
+          minLength: 2
+          example: John Doe
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          example: SecurePassword123!
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (1 minute lifetime)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds (60 seconds = 1 minute)
+          example: 60
+        user:
+          $ref: "#/components/schemas/User"
+      description: Note - refresh_token is set in httpOnly cookie, not returned in response body
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: New JWT access token (1 minute lifetime)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds (60 seconds = 1 minute)
+          example: 60
+      description: Note - new refresh_token is rotated and set in httpOnly cookie
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 123e4567-e89b-12d3-a456-426614174000
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        name:
+          type: string
+          example: John Doe
+        provider:
+          type: string
+          enum: [local, google]
+          example: local
+        created_at:
+          type: string
+          format: date-time
+          example: 2024-01-15T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2024-01-15T10:30:00Z
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: John Doe
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid credentials
+        message:
+          type: string
+          example: The provided email or password is incorrect
+        code:
+          type: string
+          example: AUTH_001
+        timestamp:
+          type: string
+          format: date-time
+          example: 2024-01-15T10:30:00Z
