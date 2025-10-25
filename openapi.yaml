@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 
 servers:
-  - url: https://api.example.com/v1
+  - url: https://kn8.tech
     description: Production server
 
 tags:
