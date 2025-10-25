@@ -23,9 +23,7 @@ handle /health {
 }
 
 handle {
-	root * /srv
-	file_server
-	try_files {path} /index.html
+	reverse_proxy {$KN8_FE_URL:http://kn8-fe.railway.internal:3000}
 }
 
 handle_errors {
