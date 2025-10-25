@@ -3,7 +3,7 @@
 log {
 	output stdout
 	format json
-	level DEBUG
+	level INFO
 }
 
 handle /auth/* {
@@ -20,10 +20,6 @@ handle /api/* {
 
 handle /health {
 	reverse_proxy {$KN8_CORE_URL:http://localhost:4000}
-}
-
-handle /debug {
-	respond "Caddy OK! KN8_FE_URL={$KN8_FE_URL} KN8_CORE_URL={$KN8_CORE_URL}" 200
 }
 
 handle {
