@@ -12,7 +12,7 @@ handle /api/auth/* {
 
 handle /api/* {
 	forward_auth {$KN8_CORE_URL:http://localhost:4000} {
-		uri /auth/verify
+		uri /api/auth/verify
 		copy_headers X-User-ID X-User-Email X-Tenant-ID X-User-Roles
 	}
 	reverse_proxy {$KN8_CORE_URL:http://localhost:4000}
