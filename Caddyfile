@@ -1,35 +1,61 @@
-:{$PORT:8080}
+{$KN8_APP_DOMAIN:app.kn8.tech} {
+	log {
+		output stdout
+		format json
+		level INFO
+	}
 
-log {
-	output stdout
-	format json
-	level INFO
+	encode gzip zstd
+
+	handle /api/* {
+		reverse_proxy {$KN8_CORE_URL:http://localhost:4000} {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	handle {
+		reverse_proxy {$KN8_FE_URL:http://localhost:3000} {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	handle_errors {
+		@5xx expression `{http.error.status_code} >= 500`
+		respond @5xx "Service temporarily unavailable" 503
+		
+		@4xx expression `{http.error.status_code} >= 400 && {http.error.status_code} < 500`
+		respond @4xx "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+		
+		respond "{http.error.status_code} {http.error.status_text}"
+	}
 }
 
-encode gzip zstd
+{$KN8_DOMAIN:kn8.tech} {
+	log {
+		output stdout
+		format json
+		level INFO
+	}
 
-handle /api/* {
-	reverse_proxy {$KN8_CORE_URL:http://localhost:4000} {
+	encode gzip zstd
+
+	reverse_proxy {$KN8_LANDING_URL} {
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
 	}
-}
 
-handle {
-	reverse_proxy {$KN8_FE_URL:http://localhost:3000} {
-		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {remote_host}
-		header_up X-Forwarded-Proto {scheme}
+	handle_errors {
+		@5xx expression `{http.error.status_code} >= 500`
+		respond @5xx "Service temporarily unavailable" 503
+		
+		@4xx expression `{http.error.status_code} >= 400 && {http.error.status_code} < 500`
+		respond @4xx "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+		
+		respond "{http.error.status_code} {http.error.status_text}"
 	}
-}
-
-handle_errors {
-	@5xx expression `{http.error.status_code} >= 500`
-	respond @5xx "Service temporarily unavailable" 503
-	
-	@4xx expression `{http.error.status_code} >= 400 && {http.error.status_code} < 500`
-	respond @4xx "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
-	
-	respond "{http.error.status_code} {http.error.status_text}"
 }
